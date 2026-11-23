@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'cubit/notes_cubit.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    BlocProvider(
+      create: (context) => NotesCubit(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -26,43 +33,50 @@ class NotesPage extends StatefulWidget {
 class _NotesPageState extends State<NotesPage> {
   final TextEditingController _controller = TextEditingController();
 
-  final List<String> _notes = [];
-
   void _addNote() {
     String inputValue = _controller.text;
 
     if (inputValue.isNotEmpty) {
-      setState(() {
-        _notes.add(inputValue);
-      });
-
+      context.read<NotesCubit>().addNote(inputValue);
       _controller.clear();
     }
   }
 
-  void _deleteNote(int index) {
-    setState(() {
-      _notes.removeAt(index);
-    });
+  void _showNote(String note) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Просмотр заметки'),
+          content: Text(note),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Закрыть'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
-  void _editNote(int index) {
+  void _editNote(int index, String note) {
     final TextEditingController editController =
-        TextEditingController(text: _notes[index]);
+        TextEditingController(text: note);
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('Редактирование заметки'),
-
           content: TextField(
             controller: editController,
             decoration: const InputDecoration(
               hintText: 'Введите новый текст',
             ),
           ),
-
           actions: [
             TextButton(
               onPressed: () {
@@ -70,13 +84,12 @@ class _NotesPageState extends State<NotesPage> {
               },
               child: const Text('Отмена'),
             ),
-
             ElevatedButton(
               onPressed: () {
                 if (editController.text.isNotEmpty) {
-                  setState(() {
-                    _notes[index] = editController.text;
-                  });
+                  context
+                      .read<NotesCubit>()
+                      .editNote(index, editController.text);
 
                   Navigator.pop(context);
                 }
@@ -101,10 +114,8 @@ class _NotesPageState extends State<NotesPage> {
       appBar: AppBar(
         title: const Text('Заметки'),
       ),
-
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-
         child: Column(
           children: [
             TextField(
@@ -114,42 +125,81 @@ class _NotesPageState extends State<NotesPage> {
                 border: OutlineInputBorder(),
               ),
             ),
-
             const SizedBox(height: 10),
-
             ElevatedButton(
               onPressed: _addNote,
               child: const Text('Сохранить'),
             ),
-
             const SizedBox(height: 20),
-
             Expanded(
-              child: ListView.builder(
-                itemCount: _notes.length,
+              child: BlocBuilder<NotesCubit, NotesState>(
+                builder: (context, state) {
+                  return ListView.builder(
+                    itemCount: state.notes.length,
+                    itemBuilder: (context, index) {
+                      double dragDistance = 0;
 
-                itemBuilder: (context, index) {
-                  return ListTile(
-                    title: Text(_notes[index]),
-
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          onPressed: () {
-                            _editNote(index);
-                          },
-                          icon: const Icon(Icons.edit),
+                      return GestureDetector(
+                        onTap: () {
+                          _showNote(state.notes[index]);
+                        },
+                        onDoubleTap: () {
+                          context
+                              .read<NotesCubit>()
+                              .makeImportant(index);
+                        },
+                        onLongPress: () {
+                          _editNote(index, state.notes[index]);
+                        },
+                        onHorizontalDragStart: (details) {
+                          dragDistance = 0;
+                        },
+                        onHorizontalDragUpdate: (details) {
+                          dragDistance += details.delta.dx;
+                        },
+                        onHorizontalDragEnd: (details) {
+                          if (dragDistance > 0) {
+                            context
+                                .read<NotesCubit>()
+                                .makeNormal(index);
+                          } else if (dragDistance < 0) {
+                            context
+                                .read<NotesCubit>()
+                                .deleteNote(index);
+                          }
+                        },
+                        child: Container(
+                          color: state.importantNotes[index]
+                              ? Colors.yellow
+                              : Colors.white,
+                          child: ListTile(
+                            title: Text(state.notes[index]),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  onPressed: () {
+                                    _editNote(
+                                      index,
+                                      state.notes[index],
+                                    );
+                                  },
+                                  icon: const Icon(Icons.edit),
+                                ),
+                                IconButton(
+                                  onPressed: () {
+                                    context
+                                        .read<NotesCubit>()
+                                        .deleteNote(index);
+                                  },
+                                  icon: const Icon(Icons.delete),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-
-                        IconButton(
-                          onPressed: () {
-                            _deleteNote(index);
-                          },
-                          icon: const Icon(Icons.delete),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   );
                 },
               ),
